@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-
+Description: Stack for building a log generator that has a kinesis agent to produce data into kinesis firehose.
 Parameters:
   Env:
     Description: "specify an env"
@@ -27,6 +27,26 @@ Resources:
         - Key: Env
           Value: !Ref Env
       IamInstanceProfile: !Ref RootInstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          cd /home/ec2-user
+          sudo yum install -y aws-kinesis-agent
+
+          wget http://media.sundog-soft.com/AWSBigData/LogGenerator.zip
+
+          unzip LogGenerator.zip
+
+          sudo chmod a+x LogGenerator.py
+
+          sudo mkdir /var/log/cadabra
+
+          cd /etc/aws-kinesis
+          sudo rm agent.json
+          sudo aws s3 cp s3://testkinesisagentdg/agent.json agent.json
+                    
+          service aws-kinesis-agent start
+          chkconfig aws-kinesis-agent on
 
   sgTestLogsServerGen:
     Type: AWS::EC2::SecurityGroup
@@ -50,11 +70,6 @@ Resources:
           Value: SG
         - Key: Env
           Value: !Ref Env
-      # UserData:
-      #   Fn::Base64: !Sub |
-      #     #!/bin/bash
-      #     yum update -y aws-cfn-bootstrap
-      #     /opt/aws/bin/cfn-init --stack ${AWS::StackName} --resource SFTPGatewayInstance \n --region ${AWS::Region}
 
   RootInstanceProfile:
     Type: AWS::IAM::InstanceProfile
