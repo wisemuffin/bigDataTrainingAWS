@@ -34,9 +34,7 @@ Resources:
           sudo yum install -y aws-kinesis-agent
 
           wget http://media.sundog-soft.com/AWSBigData/LogGenerator.zip
-
           unzip LogGenerator.zip
-
           sudo chmod a+x LogGenerator.py
 
           sudo mkdir /var/log/cadabra
@@ -47,6 +45,13 @@ Resources:
                     
           service aws-kinesis-agent start
           chkconfig aws-kinesis-agent on
+
+          pip install boto3
+          sudo aws configure set region ap-southeast-2
+          cd /home/ec2-user
+          wget http://media.sundog-soft.com/AWSBigData/Consumer.py
+          sudo chmod a+x Consumer.py
+          sudo ./Consumer.py
 
   sgTestLogsServerGen:
     Type: AWS::EC2::SecurityGroup
