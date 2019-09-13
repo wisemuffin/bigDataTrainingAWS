@@ -5,19 +5,11 @@ aws cloudformation delete-stack --stack-name testLogsServerGen
 
 aws cloudformation create-stack --stack-name testLogsServerGen --template-body file://./testLogsServerGen.yaml --parameters ParameterKey=Env,ParameterValue=np ParameterKey=KeyName,ParameterValue=david_wsl --capabilities CAPABILITY_IAM
 
-# creating/updating the stack testKinesisFirehose from template
+# creating/updating the stack testKinesisFirehoseWithEMR from template
 
 aws cloudformation delete-stack --stack-name testKinesisFirehose
 
-aws cloudformation create-stack --stack-name testKinesisFirehose --template-body file://./testKinesisFirehose.yaml --parameters ParameterKey=Env,ParameterValue=np --capabilities CAPABILITY_IAM
-
-# SAM testKinesisStreamToLambdaToDynamoDb - to DELETE
-
-aws cloudformation delete-stack --stack-name test-kinesis-stream-lambda
-
-sam package --template-file template.yaml --output-template-file sam.yaml --s3-bucket samdeploymentdg
-
-aws cloudformation create-stack --stack-name test-kinesis-stream-lambda --template-body file://sam.yaml --parameters ParameterKey=Env,ParameterValue=np --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+aws cloudformation create-stack --stack-name testKinesisFirehose --template-body file://./testKinesisFirehose.yaml --parameters ParameterKey=Env,ParameterValue=np ParameterKey=EMRInstanceType,ParameterValue=m4.large --capabilities CAPABILITY_IAM
 
 # SAM testKinesisStreamToLambdaToDynamoDb
 
@@ -57,6 +49,8 @@ tail -f /var/log/aws-kinesis-agent/aws-kinesis-agent.log
 aws cloudformation list-stacks --region ap-southeast-2 --output table --query 'StackSummaries[*].StackName'
 
 aws cloudformation describe-stacks --region ap-southeast-2 --stack-name testLogsServerGen --query 'Stacks[*].RoleARN'
+
+aws cloudformation validate-template --template-body file://./testKinesisFirehose.yaml --parameters ParameterKey=Env,ParameterValue=np --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
 
 # set up kinesis agent script
 
