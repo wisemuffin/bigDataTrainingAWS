@@ -1,5 +1,6 @@
 # creating/updating the stack testLogsServerGen from template
 
+cd LogGen
 aws cloudformation delete-stack --stack-name testLogsServerGen
 
 aws cloudformation create-stack --stack-name testLogsServerGen --template-body file://./testLogsServerGen.yaml --parameters ParameterKey=Env,ParameterValue=np ParameterKey=KeyName,ParameterValue=david_wsl --capabilities CAPABILITY_IAM
@@ -10,11 +11,21 @@ aws cloudformation delete-stack --stack-name testKinesisFirehose
 
 aws cloudformation create-stack --stack-name testKinesisFirehose --template-body file://./testKinesisFirehose.yaml --parameters ParameterKey=Env,ParameterValue=np --capabilities CAPABILITY_IAM
 
-# creatre/update the stack testKinesisStream from template
+# SAM testKinesisStreamToLambdaToDynamoDb - to DELETE
 
-aws cloudformation delete-stack --stack-name testKinesisStream
+aws cloudformation delete-stack --stack-name test-kinesis-stream-lambda
 
-aws cloudformation create-stack --stack-name testKinesisStream --template-body file://./testKinesisStream.yaml --parameters ParameterKey=Env,ParameterValue=np
+sam package --template-file template.yaml --output-template-file sam.yaml --s3-bucket samdeploymentdg
+
+aws cloudformation create-stack --stack-name test-kinesis-stream-lambda --template-body file://sam.yaml --parameters ParameterKey=Env,ParameterValue=np --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+
+# SAM testKinesisStreamToLambdaToDynamoDb
+
+aws cloudformation delete-stack --stack-name testKinesisStreamToLambdaToDynamoDb
+
+sam package --template-file template.yaml --output-template-file sam.yaml --s3-bucket samdeploymentdg
+
+aws cloudformation create-stack --stack-name testKinesisStreamToLambdaToDynamoDb --template-body file://sam.yaml --parameters ParameterKey=Env,ParameterValue=np --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
 
 # got ya
 

@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: 'Kinesis Stream -> lambda -> DynamoDb
+
+  '
+Globals:
+  Function:
+    Timeout: 5
+Parameters:
+  Env:
+    Description: specify an env
+    Type: String
+Resources:
+  ConfirmBooking:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Handler: lambdaToDynamodb.lambda_handler
+      CodeUri: s3://samdeploymentdg/8f071cb97ef262794e8ef06f846ff1bb
+      Tracing: Active
+      Runtime: python2.7
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName: CadabraOrders
+  MyEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::GetAtt:
+        - TestKinesisStream
+        - Arn
+      FunctionName:
+        Fn::GetAtt:
+        - ConfirmBooking
+        - Arn
+      StartingPosition: LATEST
+      BatchSize: 100
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaKinesisExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+  TestKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: CadabraOrders
+      RetentionPeriodHours: 24
+      ShardCount: 1
+      Tags:
+      - Key: Name
+        Value: TestKinesisStream
+      - Key: AWSResource
+        Value: Stream
+      - Key: Env
+        Value:
+          Ref: Env
+  CadabraOrders:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: CadabraOrders
+      AttributeDefinitions:
+      - AttributeName: CustomerID
+        AttributeType: N
+      - AttributeName: OrderID
+        AttributeType: S
+      KeySchema:
+      - AttributeName: CustomerID
+        KeyType: HASH
+      - AttributeName: OrderID
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
