@@ -7,17 +7,23 @@ aws cloudformation create-stack --stack-name testLogsServerGen --template-body f
 
 # creating/updating the stack testKinesisFirehoseWithEMR from template
 
-aws cloudformation delete-stack --stack-name testKinesisFirehose
+aws cloudformation delete-stack --stack-name testKinesisFirehoseWithEMR
 
-aws cloudformation create-stack --stack-name testKinesisFirehose --template-body file://./testKinesisFirehose.yaml --parameters ParameterKey=Env,ParameterValue=np ParameterKey=EMRInstanceType,ParameterValue=m4.large --capabilities CAPABILITY_IAM
+aws cloudformation create-stack --stack-name testKinesisFirehoseWithEMR --template-body file://./testKinesisFirehose.yaml --parameters ParameterKey=Env,ParameterValue=np ParameterKey=EMRInstanceType,ParameterValue=m4.large --capabilities CAPABILITY_IAM
 
-# SAM testKinesisStreamToLambdaToDynamoDb
+# SAM testKinesisStreamToLambdaToDynamodb
 
 aws cloudformation delete-stack --stack-name testKinesisStreamToLambdaToDynamoDb
 
 sam package --template-file template.yaml --output-template-file sam.yaml --s3-bucket samdeploymentdg
 
 aws cloudformation create-stack --stack-name testKinesisStreamToLambdaToDynamoDb --template-body file://sam.yaml --parameters ParameterKey=Env,ParameterValue=np --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+
+# creating/updating the stack testKinesisAnalyticsWithAlarm from template
+
+aws cloudformation delete-stack --stack-name testKinesisAnalyticsWithAlarm
+
+aws cloudformation create-stack --stack-name testKinesisAnalyticsWithAlarm --template-body file://testKinesisAnalyticsWithAlarm.yaml --parameters ParameterKey=Env,ParameterValue=np ParameterKey=KinesisStreamStack,ParameterValue=testKinesisStreamToLambdaToDynamoDb --capabilities CAPABILITY_IAM
 
 # got ya
 
@@ -50,7 +56,9 @@ aws cloudformation list-stacks --region ap-southeast-2 --output table --query 'S
 
 aws cloudformation describe-stacks --region ap-southeast-2 --stack-name testLogsServerGen --query 'Stacks[*].RoleARN'
 
-aws cloudformation validate-template --template-body file://./testKinesisFirehose.yaml --parameters ParameterKey=Env,ParameterValue=np --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+aws cloudformation validate-template --template-body file://./testKinesisFirehose.yaml
+
+aws cloudformation validate-template --template-body file://./sam.yaml
 
 # set up kinesis agent script
 
