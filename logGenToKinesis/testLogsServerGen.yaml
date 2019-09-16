@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Stack for building a log generator that has a kinesis agent to produce data into kinesis firehose.
+Parameters:
+  Env:
+    Description: "specify an env"
+    Type: String
+  KeyName:
+    Description: The EC2 Key Pair to allow SSH access to the instance
+    Type: "AWS::EC2::KeyPair::KeyName"
+  # KinesisResources:
+  #   Description: KinesisStreamAndKinesisFirehose for both
+  #   Type: String
+# Conditions:
+#   AddKinesisFirehoseToAgent:
+#     !Equals [!Ref KinesisResources, KinesisStreamAndKinesisFirehose]
+Resources:
+  testLogsServerGen:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.nano
+      ImageId: ami-07cc15c3ba6f8e287
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref sgTestLogsServerGen
+      AvailabilityZone: ap-southeast-2a
+      SubnetId: subnet-44a5950d
+      Tags:
+        - Key: Name
+          Value: testLogsServerGen
+        - Key: AWSResource
+          Value: EC2
+        - Key: Env
+          Value: !Ref Env
+      IamInstanceProfile: !Ref RootInstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          cd /home/ec2-user
+          sudo yum install -y aws-kinesis-agent
+
+          wget http://media.sundog-soft.com/AWSBigData/LogGenerator.zip
+          unzip LogGenerator.zip
+          sudo chmod a+x LogGenerator.py
+
+          sudo mkdir /var/log/cadabra
+
+          cd /etc/aws-kinesis
+          sudo rm agent.json
+          sudo aws s3 cp s3://testkinesisagentdg/agent.json agent.json
+
+          ${AWS::StackName}-TestKinesisStream-ARN-${Env}
+                    
+          service aws-kinesis-agent start
+          chkconfig aws-kinesis-agent on
+
+          pip install boto3
+          sudo aws configure set region ap-southeast-2
+          cd /home/ec2-user
+          wget http://media.sundog-soft.com/AWSBigData/Consumer.py
+          sudo chmod a+x Consumer.py
+          sudo ./Consumer.py
+
+  sgTestLogsServerGen:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: sgTestLogsServerGen
+      GroupName: sgTestLogsServerGen
+      VpcId: vpc-18227c7f
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: sgTestLogsServerGen
+        - Key: AWSResource
+          Value: SG
+        - Key: Env
+          Value: !Ref Env
+
+  RootInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref TestLogsServerGenRole
+
+  TestLogsServerGenRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+
+  RolePolicies:
+    Type: AWS::IAM::Policy
+    DependsOn:
+      - testLogsServerGen
+    Properties:
+      PolicyName: testLogsServerGenPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Resource: "*"
+      Roles:
+        - !Ref TestLogsServerGenRole

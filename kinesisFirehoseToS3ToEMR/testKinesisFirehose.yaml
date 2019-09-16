@@ -1,0 +1,233 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: log -> kinesis firehose -> s3 -> EMR
+
+Parameters:
+  Env:
+    Description: "specify an env"
+    Type: String
+  EMRInstanceType:
+    Type: String
+    Default: m4.2xlarge
+    AllowedValues:
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m4.4xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c4.4xlarge
+      - r3.xlarge
+      - r3.2xlarge
+      - r3.4xlarge
+      - r3.8xlarge
+    Description:
+      EMR node ec2 instance type - you can add more types by expanding
+      on this list.
+
+Resources:
+  PurchaseLogs:
+    DependsOn:
+      - deliveryPolicy
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !Join
+          - ""
+          - - "arn:aws:s3:::"
+            - !Ref orderlogskinesisdg
+        BufferingHints:
+          IntervalInSeconds: "60"
+          SizeInMBs: "5"
+        CompressionFormat: UNCOMPRESSED
+        # Prefix: firehose/
+        RoleARN: !GetAtt deliveryRole.Arn
+        # ProcessingConfiguration:
+        #   Enabled: "true"
+        # Processors:
+        #   - Parameters:
+        #       - ParameterName: LambdaArn
+        #         ParameterValue: !GetAtt myLambda.Arn
+        #     Type: Lambda
+  orderlogskinesisdg:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+  deliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ""
+            Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref "AWS::AccountId"
+  deliveryPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: firehose_delivery_policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - "s3:AbortMultipartUpload"
+              - "s3:GetBucketLocation"
+              - "s3:GetObject"
+              - "s3:ListBucket"
+              - "s3:ListBucketMultipartUploads"
+              - "s3:PutObject"
+            Resource:
+              - !Join
+                - ""
+                - - "arn:aws:s3:::"
+                  - !Ref orderlogskinesisdg
+              - !Join
+                - ""
+                - - "arn:aws:s3:::"
+                  - !Ref orderlogskinesisdg
+                  - "*"
+      Roles:
+        - !Ref deliveryRole
+  EmrCluster:
+    Type: AWS::EMR::Cluster
+    Properties:
+      # AdditionalInfo: Json
+      Applications:
+        - Name: Hadoop
+        - Name: Hive
+        - Name: Spark
+        - Name: Ganglia
+      # AutoScalingRole: String
+      # BootstrapActions:
+      #   - BootstrapActionConfig
+      # Configurations:
+      #   - Configuration
+      # CustomAmiId: String
+      # EbsRootVolumeSize: Integer
+      Instances:
+        # AdditionalMasterSecurityGroups:
+        #   - String
+        # AdditionalSlaveSecurityGroups:
+        #   - String
+        # CoreInstanceFleet:
+        CoreInstanceGroup:
+          # AutoScalingPolicy:
+          #   AutoScalingPolicy
+          # BidPrice: String
+          # Configurations:
+          #   - Configuration
+          # EbsConfiguration:
+          #   EbsConfiguration
+          InstanceCount: 2
+          InstanceType: !Ref EMRInstanceType
+          # Market: String
+          # Name: String
+        Ec2KeyName: david_wsl
+        # Ec2SubnetId: String
+        # Ec2SubnetIds:
+        #   - String
+        # EmrManagedMasterSecurityGroup: String
+        # EmrManagedSlaveSecurityGroup: String
+        # HadoopVersion: String
+        # KeepJobFlowAliveWhenNoSteps: Boolean
+        # MasterInstanceFleet: InstanceFleetConfig
+        MasterInstanceGroup:
+          InstanceCount: 1
+          InstanceType: !Ref EMRInstanceType
+        # Placement: PlacementType
+        # ServiceAccessSecurityGroup: String
+        # TerminationProtected: Boolean
+      JobFlowRole: !Ref rEMREC2InstanceProfile
+      # KerberosAttributes: KerberosAttributes
+      LogUri: !Join
+        - ""
+        - - "s3://"
+          - !Ref EmrBucketKinesisFirehoseToEmr
+      Name: CadambraRecs
+      ReleaseLabel: emr-5.26.0
+      # ScaleDownBehavior: String
+      # SecurityConfiguration: String
+      ServiceRole: !Ref rEMRServiceRole
+      # Steps:
+      #   - StepConfig
+      Tags:
+        - Key: Name
+          Value: EmrCluster
+        - Key: AWSResource
+          Value: EMR
+        - Key: Env
+          Value: !Ref Env
+      # VisibleToAllUsers: Boolean
+
+  EmrBucketKinesisFirehoseToEmr:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: testkinesisfirehosetoemrdglogs
+
+  rEMREC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: rEMREC2Role
+
+  rEMREC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role
+      # Policies:
+      # - PolicyName: ES-for-EMR
+      #   PolicyDocument:
+      #     Version: "2012-10-17"
+      #     Statement:
+      #       - Resource: !Sub "${EsArn}/*"
+      #         Action:
+      #           - es:*
+      #         Effect: Allow
+      # - PolicyName: Athena-for-EMR
+      #   PolicyDocument:
+      #     Version: "2012-10-17"
+      #     Statement:
+      #       - Resource: "*"
+      #         Action:
+      #           - athena:*
+      #         Effect: Allow
+  rEMRServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - elasticmapreduce.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceRole
+Outputs:
+  StackKinesisFirehoseName:
+    Description: Name of Firehose
+    Value: !Ref PurchaseLogs
+    Export:
+      Name: !Sub "${AWS::StackName}-StackKinesisFirehoseName-PurchaseLogs-${Env}"
