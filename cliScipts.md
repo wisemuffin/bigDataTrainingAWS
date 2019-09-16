@@ -23,7 +23,13 @@ aws cloudformation create-stack --stack-name testKinesisStreamToLambdaToDynamoDb
 
 aws cloudformation delete-stack --stack-name testKinesisAnalyticsWithAlarm
 
-aws cloudformation create-stack --stack-name testKinesisAnalyticsWithAlarm --template-body file://testKinesisAnalyticsWithAlarm.yaml --parameters ParameterKey=Env,ParameterValue=np ParameterKey=KinesisStreamStack,ParameterValue=testKinesisStreamToLambdaToDynamoDb --capabilities CAPABILITY_IAM
+# creating/updating the stack testRedshiftGlueAthenaSpectrum from template
+
+aws cloudformation delete-stack --stack-name testRedshiftGlueAthenaSpectrum
+
+aws cloudformation create-stack --stack-name testRedshiftGlueAthenaSpectrum --template-body file://testRedshiftGlueAthenaSpectrum.yaml --parameters ParameterKey=TagEnvironment,ParameterValue=Development ParameterKey=DatabaseName,ParameterValue=np ParameterKey=MasterUsername,ParameterValue=dave ParameterKey=SubscriptionEmail,ParameterValue=davidgg777@hotmail.com ParameterKey=MyIp,ParameterValue=172.17.73.161 ParameterKey=MasterUserPassword,ParameterValue=Testpw123 --capabilities CAPABILITY_IAM
+
+[great redshift template](https://github.com/aws-samples/amazon-redshift-query-patterns-and-optimizations/blob/master/src/CloudFormation/redshift_vpc_glue.yml)
 
 # got ya
 
