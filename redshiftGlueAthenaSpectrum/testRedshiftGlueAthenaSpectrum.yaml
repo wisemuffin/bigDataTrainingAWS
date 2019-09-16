@@ -1,0 +1,271 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  AWS CF Template to create following resources
+  Redshiftcluster
+  Cloudwatch alarms for redshift and sns topic per stack
+Parameters:
+  DatabaseName:
+    Description:
+      The name of the first database to be created when the cluster is
+      created
+    Type: String
+    Default: dev
+    AllowedPattern: "([a-z]|[0-9])+"
+  MasterUsername:
+    Description:
+      The user name that is associated with the master user account for
+      the cluster that is being created
+    Type: String
+    Default: defaultuser
+    AllowedPattern: "([a-z])([a-z]|[0-9])*"
+  MasterUserPassword:
+    Description:
+      The password that is associated with the master user account for
+      the cluster that is being created.
+    Type: String
+    NoEcho: "true"
+
+  # KeyName:
+  #   Description: The EC2 Key Pair to allow SSH access to the instance
+  #   Type: "AWS::EC2::KeyPair::KeyName"
+
+  SubscriptionEmail:
+    Type: String
+    Description: Email address to notify when an API activity has triggered an alarm
+    Default: "sudhig@amazon.com"
+    #AllowedPattern: ^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$
+
+  VPCPublicSubnet1:
+    Type: String
+    Description: subnet to launch redshift into
+    Default: "subnet-44a5950d"
+
+  VPCPublicSubnet2:
+    Type: String
+    Description: subnet to launch redshift into
+    Default: "subnet-d66c6ab1"
+
+  VPCID:
+    Type: String
+    Description: vpc to launch redshift & SG into
+    Default: "vpc-18227c7f"
+
+  MyIp:
+    Type: String
+    Description: myipaddress
+
+  TagEnvironment:
+    Type: String
+    AllowedValues:
+      - Development
+      - Test
+      - Integration
+      - Production
+    Description: The environment key is used to designate the production level of the associated AWS resource.
+    Default: Development
+
+###############################################################################
+# Conditions
+###############################################################################
+Conditions:
+  # IsMultiNodeCluster: !Equals [!Ref ClusterType, "multi-node"]
+  CreateProdResources: !Equals [!Ref TagEnvironment, "Production"]
+  # CreateDevResources: !Not [!Equals [!Ref TagEnvironment, Production]]
+  # IsSnapshotSpecified:
+  #   Fn::Not:
+  #     - Fn::Equals:
+  #         - ""
+  #         - Ref: SnapshotIdentifierName
+  # IsSnapshotAccountSpecified:
+  #   Fn::Not:
+  #     - Fn::Equals:
+  #         - ""
+  #         - Ref: SnapshotAccountNumber
+
+###############################################################################
+# Resources
+###############################################################################
+Resources:
+  RedshiftCluster:
+    Type: AWS::Redshift::Cluster
+    Properties:
+      ClusterType: "single-node"
+      VpcSecurityGroupIds:
+        - !Ref RedshiftSecurityGroup
+      NodeType: "dc2.large"
+      DBName:
+        Ref: DatabaseName
+      MasterUsername:
+        Ref: MasterUsername
+      MasterUserPassword:
+        Ref: MasterUserPassword
+      PubliclyAccessible: "true"
+      IamRoles:
+        - !GetAtt redshiftSpectrumRole.Arn
+      ClusterSubnetGroupName: !Ref RedshiftClusterSubnetGroup
+  redshiftSpectrumRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - redshift.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AWSGlueConsoleFullAccess
+
+  RedshiftClusterSubnetGroup:
+    Type: "AWS::Redshift::ClusterSubnetGroup"
+    Properties:
+      Description: Cluster subnet group
+      SubnetIds:
+        - !Ref VPCPublicSubnet1
+        - !Ref VPCPublicSubnet2
+
+  RedshiftSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable JDBC port
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - # SourceSecurityGroupId: !Ref AccessToRedshiftSecurityGroup
+          CidrIp: !Sub "${MyIp}/32"
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+          Description: Access to redshift
+        - # SourceSecurityGroupId: !Ref AccessToRedshiftSecurityGroup
+          CidrIp: !Sub "${MyIp}/32"
+          FromPort: 5439
+          ToPort: 5439
+          IpProtocol: tcp
+          Description: Access to redshift
+
+  ###
+  #ALARMS
+  ###
+  DiskSpacealarmredshift:
+    Type: "AWS::CloudWatch::Alarm"
+    DependsOn: RedshiftCluster
+    Properties:
+      MetricName: !Join
+        - ""
+        - - !Ref RedshiftCluster
+          - High-PercentageDiskSpaceUsed
+      AlarmDescription: !Join
+        - ""
+        - - DiskSpace Utilization > 85% for
+          - !Ref RedshiftCluster
+      Namespace: AWS/Redshift
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "3"
+      Threshold: "85"
+      AlarmActions:
+        - !Ref sns
+      Dimensions:
+        - Name: ClusterIdentifier
+          Value: !Ref RedshiftCluster
+      ComparisonOperator: GreaterThanThreshold
+      Unit: Percent
+
+  HighCPUutilizationalarmredshift:
+    Type: "AWS::CloudWatch::Alarm"
+    DependsOn: RedshiftCluster
+    Condition: CreateProdResources
+    Properties:
+      MetricName: !Join
+        - ""
+        - - !Ref RedshiftCluster
+          - High-CPUUtilization
+      AlarmDescription: !Join
+        - ""
+        - - CPUUtilization > 95% for last 30 min for cluster
+          - !Ref RedshiftCluster
+      Namespace: AWS/Redshift
+      Statistic: Average
+      Period: "900"
+      EvaluationPeriods: "2"
+      Threshold: "95"
+      AlarmActions:
+        - !Ref sns
+      Dimensions:
+        - Name: ClusterIdentifier
+          Value: !Ref RedshiftCluster
+      ComparisonOperator: GreaterThanThreshold
+      Unit: Percent
+
+  HighReadLatencyalarmredshift:
+    Type: "AWS::CloudWatch::Alarm"
+    Condition: CreateProdResources
+    DependsOn: RedshiftCluster
+    #Condition: IsProd
+    Properties:
+      MetricName: !Join
+        - ""
+        - - !Ref RedshiftCluster
+          - High-ReadLatency
+      AlarmDescription: !Join
+        - ""
+        - - ReadLatency is high for
+          - !Ref RedshiftCluster
+      Namespace: AWS/Redshift
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "3"
+      Threshold: "0.3"
+      AlarmActions:
+        - !Ref sns
+      Dimensions:
+        - Name: ClusterIdentifier
+          Value: !Ref RedshiftCluster
+      ComparisonOperator: GreaterThanThreshold
+      Unit: Percent
+
+  sns:
+    Type: "AWS::SNS::Topic"
+    Properties:
+      Subscription:
+        - Endpoint: !Ref SubscriptionEmail
+          Protocol: Email
+      TopicName: !Join ["-", [!Ref "AWS::StackName", "sns"]]
+###############################################################################
+# Output Parameters
+###############################################################################
+
+Outputs:
+  ClusterEndpoint:
+    Description: Redshift Cluster endpoint
+    Value: !Join
+      - ":"
+      - - !GetAtt
+          - RedshiftCluster
+          - Endpoint.Address
+        - !GetAtt
+          - RedshiftCluster
+          - Endpoint.Port
+   RedshiftClusterName:
+    Description: Name of the Redshift Cluster
+    Value: !Ref RedshiftCluster
+    
+  # RedshiftParameterGroupName:
+  #   Description: Name of the Redshift Parameter Group
+  #   Value: !Ref RedshiftClusterParameterGroup
+    
+  RedshiftClusterSubnetGroupName:
+    Description: Name of the Cluster Subnet Group
+    Value: !Ref RedshiftClusterSubnetGroup
+    
+  RedshiftDatabaseName:
+    Description: Name of the Redshift Database
+    Value: !Ref DatabaseName
+    
+  RedshiftClusterIAMRole:
+    Description: IAM Role assigned to Redshift cluster & Glue Catalog
+    Value: !GetAtt redshiftSpectrumRole.Arn
